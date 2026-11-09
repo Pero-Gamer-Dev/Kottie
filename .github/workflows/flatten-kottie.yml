@@ -1,0 +1,51 @@
+name: Flatten kottie directory
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  flatten:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Move kottie contents to repository root
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ ! -d kottie ]]; then
+            echo "kottie/ directory not found."
+            exit 1
+          fi
+
+          shopt -s dotglob nullglob
+          items=(kottie/*)
+
+          if ((${#items[@]} == 0)); then
+            echo "kottie/ is already empty."
+            exit 0
+          fi
+
+          # Check for name conflicts before moving anything.
+          for src in "${items[@]}"; do
+            dest="./$(basename "$src")"
+            if [[ -e "$dest" || -L "$dest" ]]; then
+              echo "Conflict: $dest already exists. No files were moved."
+              exit 1
+            fi
+          done
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          for src in "${items[@]}"; do
+            git mv -- "$src" .
+          done
+
+          rmdir kottie
+          git commit -m "Move kottie contents to repository root"
+          git push origin "HEAD:${GITHUB_REF_NAME}"￼Enter
