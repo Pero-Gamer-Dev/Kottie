@@ -7,12 +7,11 @@ import io.kottie.api.event.subscribe
 import io.kottie.api.lifecycle.LifecycleState
 import io.kottie.api.lifecycle.PluginLifecycle
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.launch
+import java.time.Duration
 
 /**
- * Example plugin demonstrating the corrected lifecycle pattern.
- * The collector is launched inside the plugin-owned scope and cancelled on disable.
+ * Example plugin demonstrating the 0.2.0 lifecycle pattern.
+ * Collector is launched inside the plugin-owned scope and cancelled on disable.
  */
 class MyCustomPlugin(
     private val kottie: Kottie
@@ -23,7 +22,7 @@ class MyCustomPlugin(
     private var _state = LifecycleState.DISCOVERED
 
     override val scope: CoroutineScope
-        get() = kottie.lifecycle.scope // or a dedicated child scope in real code
+        get() = kottie.lifecycle.scope
 
     private var joinSubscription: AutoCloseable? = null
 
@@ -31,7 +30,6 @@ class MyCustomPlugin(
         _state = LifecycleState.STARTING
 
         joinSubscription = kottie.eventBus.subscribe<PlayerJoinEvent> { event ->
-            // Attach component on the server thread if the entity requires it
             kottie.scheduler.onServerThread {
                 event.entity.set(ManaComponent.KEY, ManaComponent(maxMana = 100, currentMana = 100))
             }
@@ -41,7 +39,7 @@ class MyCustomPlugin(
         _state = LifecycleState.RUNNING
     }
 
-    override suspend fun onDisable() {
+    override suspend fun onDisable(timeout: Duration) {
         _state = LifecycleState.STOPPING
         joinSubscription?.close()
         joinSubscription = null

@@ -1,5 +1,8 @@
 package io.kottie.api
 
+import io.kottie.api.config.ConfigService
+import io.kottie.api.ecs.ComponentRegistry
+import io.kottie.api.ecs.EntityStore
 import io.kottie.api.event.EventBus
 import io.kottie.api.lifecycle.PluginLifecycle
 import io.kottie.api.scheduler.ServerScheduler
@@ -12,6 +15,9 @@ interface Kottie {
     val eventBus: EventBus
     val scheduler: ServerScheduler
     val lifecycle: PluginLifecycle
+    val entityStore: EntityStore
+    val componentRegistry: ComponentRegistry
+    val config: ConfigService
 
     companion object {
         @Volatile
@@ -20,12 +26,10 @@ interface Kottie {
         fun get(): Kottie =
             instance ?: error("Kottie runtime has not been initialized")
 
-        /** Bootstrap only – called by the runtime. */
         fun setInstance(kottie: Kottie) {
             instance = kottie
         }
 
-        /** Bootstrap only – called by the runtime on shutdown. */
         fun clearInstance() {
             instance = null
         }

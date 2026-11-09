@@ -1,16 +1,15 @@
 package example;
 
 import io.kottie.api.Kottie;
-import io.kottie.api.event.EventBus;
 import io.kottie.api.event.Subscription;
-import io.kottie.api.event.player.PlayerJoinEvent;
 import io.kottie.api.lifecycle.LifecycleState;
 import io.kottie.api.lifecycle.PluginLifecycle;
 import kotlinx.coroutines.CoroutineScope;
 
+import java.time.Duration;
+
 /**
- * Minimal Java-facing example showing the callback-style usage.
- * Full Java interop helpers can be added later.
+ * Minimal Java-facing example. Full non-suspend facade will be added later.
  */
 public class JavaExamplePlugin implements PluginLifecycle {
 
@@ -34,13 +33,12 @@ public class JavaExamplePlugin implements PluginLifecycle {
 
     @Override
     public Object onEnable(kotlin.coroutines.Continuation<? super kotlin.Unit> cont) {
-        // Real Java plugins would use a non-suspend facade in a future release.
         state = LifecycleState.RUNNING;
         return kotlin.Unit.INSTANCE;
     }
 
     @Override
-    public Object onDisable(kotlin.coroutines.Continuation<? super kotlin.Unit> cont) {
+    public Object onDisable(Duration timeout, kotlin.coroutines.Continuation<? super kotlin.Unit> cont) {
         if (joinSub != null) {
             joinSub.close();
         }

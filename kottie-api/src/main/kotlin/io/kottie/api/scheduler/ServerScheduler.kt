@@ -25,6 +25,18 @@ interface ServerScheduler {
     fun isServerThread(): Boolean
 
     /**
+     * Throws [IllegalStateException] when called off the server thread.
+     * Intended for development-mode assertions inside adapters and plugins.
+     */
+    fun requireServerThread(context: String = "server-affine operation") {
+        if (!isServerThread()) {
+            throw IllegalStateException(
+                "$context must run on the server thread (current=${Thread.currentThread().name})"
+            )
+        }
+    }
+
+    /**
      * Bounded dispatcher suitable for blocking I/O.
      * Prefer structured concurrency helpers from kottie-coroutines.
      */

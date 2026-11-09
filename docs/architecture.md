@@ -1,21 +1,28 @@
-# Kottie Architecture Notes (0.1.0-alpha)
+# Kottie 1.0 Architecture
 
-This tree implements the **recommended direction** from the Complete Architecture Blueprint:
+## Layering
 
-- Layered separation: `api` → `core` → optional adapters / SPI
-- Explicit lifecycle states and owned scopes
-- Safe scheduler abstraction
-- Event bus with subscription ownership and handler isolation
-- Basic typed ECS (Kottie-managed only)
-- Atomic config snapshot holder
+```
+Plugin / feature code
+        ↓
+io.kottie.api          (stable contracts)
+        ↓
+kottie-core            (lifecycle, event bus, diagnostics)
+        ↓
+optional modules       (ecs, config, serialization, storage, packets, network)
+        ↓
+ServerAdapter          (in-memory | paper skeleton | future full Paper)
+        ↓
+Minecraft server (when adapter is fully bound)
+```
 
-## What is deliberately *not* present yet
+## 1.0 freeze
 
-- Real Paper/Bukkit adapter (SPI is ready)
-- Packet interception
-- Redis / JDBC bridges
-- Full config hot-reload + validation + migration
-- Versioned serialization codecs
-- Production-grade decision-event delivery guarantees
+Public packages under `io.kottie.api.*` are the compatibility surface for 1.0.x.  
+Implementation modules may still receive fixes; prefer depending on `kottie-api` from plugins.
 
-These are scheduled for later phases exactly as described in the blueprint.
+## Roadmap after 1.0
+
+- **1.1** — Paper adapter with real scheduler + join/quit bridge for one declared version  
+- **1.2** — Optional Redis network bridge  
+- **1.3** — Published Maven repository + CI version matrix  
