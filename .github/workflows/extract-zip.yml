@@ -18,11 +18,12 @@ permissions:
 jobs:
   extract:
     runs-on: ubuntu-latest
+
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Extract ZIP file
+      - name: Validate inputs and extract ZIP
         shell: bash
         env:
           ZIP_FILE: ${{ inputs.zip_file }}
@@ -30,19 +31,80 @@ jobs:
         run: |
           set -euo pipefail
 
-          if [[ ! -f "$ZIP_FILE" ]]; then
-            echo "ZIP file not found: $ZIP_FILE" >&2
+          repo_root="${GITHUB_WORKSPACE}"
+
+          # Reject empty input values.
+          if [[ -z "${ZIP_FILE// }" ]]; then
+            echo "zip_file input is required and cannot be empty." >&2
             exit 1
           fi
 
-          # Keep the destination inside the checked-out workspace.
-          if [[ "$EXTRACT_TO" = /* || "$EXTRACT_TO" == ".." || "$EXTRACT_TO" == ../* || "$EXTRACT_TO" == */../* || "$EXTRACT_TO" == */.. ]]; then
-            echo "Extraction directory must be a relative path without '..': $EXTRACT_TO" >&2
+          if [[ -z "${EXTRACT_TO// }" ]]; then
+            echo "extract_to input is required and cannot be empty." >&2
             exit 1
           fi
 
-          mkdir -p "$EXTRACT_TO"
-          unzip -q "$ZIP_FILE" -d "$EXTRACT_TO"
+          # Reject root-level or blank-ish values.
+          if [[ "$ZIP_FILE" == "." || "$ZIP_FILE" == "./" || "$ZIP_FILE" == "" ]]; then
+            echo "zip_file cannot be the repository root or empty." >&2
+            exit 1
+          fi
+
+          if [[ "$EXTRACT_TO" == "." || "$EXTRACT_TO" == "./" || "$EXTRACT_TO" == "" ]]; then
+            echo "extract_to cannot be the repository root or empty." >&2
+            exit 1
+          fi
+
+          # Prevent traversal attempts.
+          if [[ "$ZIP_FILE" == ".." || "$ZIP_FILE" == ../* || "$ZIP_FILE" == *"/../"* || "$ZIP_FILE" == */.. ]]; then
+            echo "zip_file must not contain path traversal: $ZIP_FILE" >&2
+            exit 1
+          fi
+
+          if [[ "$EXTRACT_TO" == ".." || "$EXTRACT_TO" == ../* || "$EXTRACT_TO" == *"/../"* || "$EXTRACT_TO" == */.. ]]; then
+            echo "extract_to must not contain path traversal: $EXTRACT_TO" >&2
+            exit 1
+          fi
+
+          # Resolve paths.
+          if [[ "$ZIP_FILE" = /* ]]; then
+            zip_path="$ZIP_FILE"
+          else
+            zip_path="${repo_root}/${ZIP_FILE}"
+          fi
+
+          if [[ "$EXTRACT_TO" = /* ]]; then
+            extract_path="$EXTRACT_TO"
+          else
+            extract_path="${repo_root}/${EXTRACT_TO}"
+          fi
+
+          # Ensure zip file is inside the repo checkout.
+          if [[ "$zip_path" != "$repo_root"/* ]]; then
+            echo "ZIP file must be inside the checked-out repository: $ZIP_FILE" >&2
+            exit 1
+          fi
+
+          # Ensure extraction directory is inside the repo checkout, not the repo root itself.
+          if [[ "$extract_path" != "$repo_root"/* || "$extract_path" == "$repo_root" ]]; then
+            echo "Extraction directory must be inside the checked-out repository: $EXTRACT_TO" >&2
+            exit 1
+          fi
+
+          if [[ ! -f "$zip_path" ]]; then
+            echo "ZIP file not found or is not a regular file: $ZIP_FILE" >&2
+            exit 1
+          fi
+
+          # Validate the ZIP archive before extraction.
+          if ! unzip -tq "$zip_path"; then
+            echo "ZIP file is invalid or corrupted: $ZIP_FILE" >&2
+            exit 1
+          fi
+
+          mkdir -p -- "$extract_path"
+          unzip -q "$zip_path" -d "$extract_path"
+
           echo "Extracted $ZIP_FILE into $EXTRACT_TO"
 
       - name: Upload extracted files
@@ -50,4 +112,4 @@ jobs:
         with:
           name: extracted-files
           path: ${{ inputs.extract_to }}
-          if-no-files-found: error￼Enter
+          if-no-files-found: error
