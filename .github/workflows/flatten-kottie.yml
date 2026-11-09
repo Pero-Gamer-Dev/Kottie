@@ -15,7 +15,7 @@ jobs:
       - name: Move kottie contents to repository root
         shell: bash
         run: |
-          set -euo pipefail
+          set -Eeuo pipefail
 
           if [[ ! -d kottie ]]; then
             echo "kottie/ directory not found."
@@ -30,12 +30,20 @@ jobs:
             exit 0
           fi
 
-          # Check for name conflicts before moving anything.
+          # Remove any existing root-level files/folders that would conflict
+          # with the flattened project files. This is intentional for the
+          # flattening workflow.
           for src in "${items[@]}"; do
-            dest="./$(basename "$src")"
+            name="$(basename "$src")"
+
+            if [[ "$name" == ".git" ]]; then
+              continue
+            fi
+
+            dest="./${name}"
             if [[ -e "$dest" || -L "$dest" ]]; then
-              echo "Conflict: $dest already exists. No files were moved."
-              exit 1
+              echo "Removing conflicting root item: $dest"
+              rm -rf -- "$dest"
             fi
           done
 
@@ -43,9 +51,16 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           for src in "${items[@]}"; do
+            name="$(basename "$src")"
+
+            if [[ "$name" == ".git" ]]; then
+              continue
+            fi
+
             git mv -- "$src" .
           done
 
-          rmdir kottie
-          git commit -m "Move kottie contents to repository root"
+          rmdir kottie 2>/dev/null || true
+          git add -A
+          git diff --cached --quiet || git commit -m "Move kottie contents to repository root"
           git push origin "HEAD:${GITHUB_REF_NAME}"
