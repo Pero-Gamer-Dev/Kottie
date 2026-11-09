@@ -48,4 +48,4 @@ jobs:
 
           rmdir kottie
           git commit -m "Move kottie contents to repository root"
-          git push origin "HEAD:${GITHUB_REF_NAME}"￼Enter
+          git push origin "HEAD:${GITHUB_REF_NAME}"
