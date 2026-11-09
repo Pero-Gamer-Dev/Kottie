@@ -1,19 +1,19 @@
-name: Extract ZIP
+name: Extract ZIP into repository
 
 on:
   workflow_dispatch:
     inputs:
       zip_file:
-        description: Path to the ZIP file in the repository
+        description: ZIP file path relative to the repository root
         required: true
         default: archive.zip
       extract_to:
-        description: Directory where the ZIP contents will be extracted
+        description: Destination path relative to the repository root (use . for the root)
         required: true
-        default: extracted
+        default: .
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   extract:
@@ -22,8 +22,10 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          persist-credentials: true
 
-      - name: Validate inputs and extract ZIP
+      - name: Safely extract ZIP
         shell: bash
         env:
           ZIP_FILE: ${{ inputs.zip_file }}
@@ -31,85 +33,105 @@ jobs:
         run: |
           set -euo pipefail
 
-          repo_root="${GITHUB_WORKSPACE}"
+          python3 - <<'PY'
+          import os
+          import shutil
+          import stat
+          import zipfile
+          from pathlib import Path, PurePosixPath
 
-          # Reject empty input values.
-          if [[ -z "${ZIP_FILE// }" ]]; then
-            echo "zip_file input is required and cannot be empty." >&2
-            exit 1
+          root = Path(os.environ["GITHUB_WORKSPACE"]).resolve()
+          zip_input = os.environ["ZIP_FILE"].strip()
+          dest_input = os.environ["EXTRACT_TO"].strip()
+
+          def safe_relative_path(value, label, allow_dot=False):
+              if not value:
+                  raise SystemExit(f"{label} cannot be empty.")
+              if "\\" in value:
+                  raise SystemExit(f"{label} must use forward slashes: {value}")
+
+              path = PurePosixPath(value)
+              if path.is_absolute() or any(part in ("..", "") for part in path.parts):
+                  raise SystemExit(f"{label} must be a relative path without '..': {value}")
+              if not allow_dot and value in (".", "./"):
+                  raise SystemExit(f"{label} cannot be the repository root.")
+
+              return path
+
+          zip_rel = safe_relative_path(zip_input, "zip_file")
+          dest_rel = safe_relative_path(dest_input, "extract_to", allow_dot=True)
+
+          zip_path = root.joinpath(*zip_rel.parts).resolve()
+          dest_path = root if str(dest_rel) == "." else root.joinpath(*dest_rel.parts).resolve()
+
+          if not zip_path.is_relative_to(root):
+              raise SystemExit("ZIP file must be inside the repository.")
+          if not zip_path.is_file():
+              raise SystemExit(f"ZIP file not found: {zip_input}")
+          if not dest_path.is_relative_to(root):
+              raise SystemExit("Extraction destination must be inside the repository.")
+
+          dest_path.mkdir(parents=True, exist_ok=True)
+
+          try:
+              with zipfile.ZipFile(zip_path) as archive:
+                  members = archive.infolist()
+
+                  if not members:
+                      raise SystemExit("The ZIP archive is empty.")
+
+                  # Validate every entry before writing any files.
+                  for member in members:
+                      name = member.filename
+                      member_path = PurePosixPath(name)
+
+                      if not name or "\\" in name or member_path.is_absolute():
+                          raise SystemExit(f"Unsafe path in ZIP archive: {name!r}")
+                      if any(part in ("..", "") for part in member_path.parts):
+                          raise SystemExit(f"Unsafe path in ZIP archive: {name!r}")
+
+                      target = dest_path.joinpath(*member_path.parts).resolve()
+                      if not target.is_relative_to(dest_path):
+                          raise SystemExit(f"ZIP entry escapes extraction directory: {name!r}")
+
+                      # Do not create symlinks from archive entries.
+                      mode = member.external_attr >> 16
+                      if stat.S_ISLNK(mode):
+                          raise SystemExit(f"Symlinks are not allowed in ZIP archives: {name!r}")
+
+                  for member in members:
+                      target = dest_path.joinpath(*PurePosixPath(member.filename).parts).resolve()
+
+                      if member.is_dir():
+                          target.mkdir(parents=True, exist_ok=True)
+                          continue
+
+                      target.parent.mkdir(parents=True, exist_ok=True)
+                      with archive.open(member) as source, target.open("wb") as output:
+                          shutil.copyfileobj(source, output)
+
+          except zipfile.BadZipFile as error:
+              raise SystemExit(f"Invalid or damaged ZIP file: {error}")
+
+          print(f"Extracted {zip_input} into {dest_input}")
+          PY
+
+      - name: Commit and push extracted files
+        shell: bash
+        env:
+          EXTRACT_TO: ${{ inputs.extract_to }}
+        run: |
+          set -euo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add -A -- "$EXTRACT_TO"
+
+          if git diff --cached --quiet; then
+            echo "No extracted-file changes to commit."
+            exit 0
           fi
 
-          if [[ -z "${EXTRACT_TO// }" ]]; then
-            echo "extract_to input is required and cannot be empty." >&2
-            exit 1
-          fi
-
-          # Reject root-level or blank-ish values.
-          if [[ "$ZIP_FILE" == "." || "$ZIP_FILE" == "./" || "$ZIP_FILE" == "" ]]; then
-            echo "zip_file cannot be the repository root or empty." >&2
-            exit 1
-          fi
-
-          if [[ "$EXTRACT_TO" == "." || "$EXTRACT_TO" == "./" || "$EXTRACT_TO" == "" ]]; then
-            echo "extract_to cannot be the repository root or empty." >&2
-            exit 1
-          fi
-
-          # Prevent traversal attempts.
-          if [[ "$ZIP_FILE" == ".." || "$ZIP_FILE" == ../* || "$ZIP_FILE" == *"/../"* || "$ZIP_FILE" == */.. ]]; then
-            echo "zip_file must not contain path traversal: $ZIP_FILE" >&2
-            exit 1
-          fi
-
-          if [[ "$EXTRACT_TO" == ".." || "$EXTRACT_TO" == ../* || "$EXTRACT_TO" == *"/../"* || "$EXTRACT_TO" == */.. ]]; then
-            echo "extract_to must not contain path traversal: $EXTRACT_TO" >&2
-            exit 1
-          fi
-
-          # Resolve paths.
-          if [[ "$ZIP_FILE" = /* ]]; then
-            zip_path="$ZIP_FILE"
-          else
-            zip_path="${repo_root}/${ZIP_FILE}"
-          fi
-
-          if [[ "$EXTRACT_TO" = /* ]]; then
-            extract_path="$EXTRACT_TO"
-          else
-            extract_path="${repo_root}/${EXTRACT_TO}"
-          fi
-
-          # Ensure zip file is inside the repo checkout.
-          if [[ "$zip_path" != "$repo_root"/* ]]; then
-            echo "ZIP file must be inside the checked-out repository: $ZIP_FILE" >&2
-            exit 1
-          fi
-
-          # Ensure extraction directory is inside the repo checkout, not the repo root itself.
-          if [[ "$extract_path" != "$repo_root"/* || "$extract_path" == "$repo_root" ]]; then
-            echo "Extraction directory must be inside the checked-out repository: $EXTRACT_TO" >&2
-            exit 1
-          fi
-
-          if [[ ! -f "$zip_path" ]]; then
-            echo "ZIP file not found or is not a regular file: $ZIP_FILE" >&2
-            exit 1
-          fi
-
-          # Validate the ZIP archive before extraction.
-          if ! unzip -tq "$zip_path"; then
-            echo "ZIP file is invalid or corrupted: $ZIP_FILE" >&2
-            exit 1
-          fi
-
-          mkdir -p -- "$extract_path"
-          unzip -q "$zip_path" -d "$extract_path"
-
-          echo "Extracted $ZIP_FILE into $EXTRACT_TO"
-
-      - name: Upload extracted files
-        uses: actions/upload-artifact@v4
-        with:
-          name: extracted-files
-          path: ${{ inputs.extract_to }}
-          if-no-files-found: error
+          git commit -m "Extract ZIP into repository"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
