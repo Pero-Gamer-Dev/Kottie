@@ -4,7 +4,7 @@ import io.kottie.api.ecs.Component
 import io.kottie.api.ecs.ComponentKey
 
 /**
- * Example custom component matching the README sample.
+ * Example custom component matching the original design sample.
  */
 data class ManaComponent(
     val maxMana: Int,
@@ -16,6 +16,7 @@ data class ManaComponent(
     }
 
     companion object {
-        val KEY = ComponentKey<ManaComponent>("kottie:mana")
+        @JvmField
+        val KEY: ComponentKey<ManaComponent> = ComponentKey("kottie:mana")
     }
 }

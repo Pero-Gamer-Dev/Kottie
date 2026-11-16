@@ -1,35 +1,33 @@
-# Definition of Done — Kottie 1.0.0
+# Definition of Done — Kottie 2.0.0
 
-## Met in this release
+## Met
 
 | Criterion | Evidence |
 |-----------|----------|
-| Reproducible source tree + Gradle build | Multi-module project, wrapper, version catalog |
-| JDK / Kotlin documented | `docs/compatibility.md`, `libs.versions.toml` |
-| Kotlin + Java example plugins | `examples/kotlin-plugin`, `examples/java-plugin` |
-| Public API vs internals separated | `io.kottie.api.*` vs `io.kottie.core` / impl modules |
-| Thread-affinity rules documented + tested | `ServerScheduler`, smoke tests |
-| Coroutine jobs cancelled on shutdown | `CancellableScope`, runtime tests |
-| Config reload validated + atomic | `DefaultConfigService`, config tests |
-| Serialized payloads versioned + size-limited | `PayloadCodec`, `safeDecode` tests |
-| Unsupported packet/server combos fail clearly | `UnsupportedPacketVersionException`, `UnsupportedServerEnvironmentException` |
-| Optional modules do not block core boot | packets / network / paper adapter optional |
-| Compatibility + migration docs | `docs/compatibility.md`, `docs/migration-guide.md` |
+| Reproducible source + Gradle build | Multi-module, wrapper, version catalog |
+| JDK 17/21 documented + CI matrix | `ci.yml`, `compatibility.md` |
+| Kotlin + Java examples | `examples/*` |
+| API vs internals separation | `io.kottie.api.*` vs implementation modules |
+| Thread-affinity rules | `ServerScheduler` + tests |
+| Lifecycle cancellation | Scopes + disable path |
+| Config validation + atomic snapshots | Config module + tests |
+| Codecs versioned + size-limited | Serialization + tests |
+| Durable storage option | `FileSystemRepository` |
+| SQL SPI | `SqlRepositoryDriver` |
+| ECS queries + systems | `EntityQuery`, `SystemRunner` |
+| Paper host adapter | `kottie-adapter-paper` |
+| Velocity host adapter | `kottie-adapter-velocity` |
+| Cluster presence + messaging | `kottie-cluster` |
+| Layout + release scripts | `verify-layout.sh`, `release-check.sh` |
+| MIT license file | `LICENSE` |
+| Honest non-claims documented | `docs/RELEASE_2.0.md` |
 
-## Explicitly out of scope for 1.0.0
+## Explicitly not claimed in 2.0.0
 
-| Item | Reason |
+| Item | Notes |
 |------|--------|
-| Full Paper/NMS packet implementation | Requires version-locked Paper dependency and CI against a server JAR |
-| Redis/JDBC production bridges | SPI only; reference impl is in-memory |
-| Live Maven Central / kottie.io publishing | Build from source; coordinates are reserved for future publishing |
-| Performance claims / TPS guarantees | No production benchmarks published |
-| Replacement of Bukkit entity model | ECS is metadata-only by design |
-
-## Remaining for a future 1.1+ “production server” release
-
-1. Paper adapter with real scheduler + event bridge  
-2. CI matrix on declared Minecraft versions  
-3. Published artifacts with checksums  
-4. Benchmark harness results under documented load  
-5. Optional Redis module with reconnect integration tests against a real broker  
+| Full Paper Netty packet interception | SPI + in-memory only |
+| Official Redis/JDBC modules | SPI + reference drivers only |
+| Maven Central publication | Operator must publish |
+| TPS / latency marketing numbers | Methodology only |
+| Replacement for Bukkit entity API | ECS is metadata-only |

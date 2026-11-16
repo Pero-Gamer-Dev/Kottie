@@ -1,23 +1,42 @@
 package io.kottie.adapter.paper
 
+import io.kottie.api.event.EventBus
+import io.kottie.api.ecs.EntityStore
 import io.kottie.api.scheduler.ServerScheduler
 import io.kottie.server.ServerAdapter
+import kotlinx.coroutines.CoroutineScope
 import org.slf4j.LoggerFactory
+import java.util.concurrent.Executor
 
 /**
- * Skeleton Paper/Bukkit adapter for Kottie 1.0.
+ * Paper-oriented [ServerAdapter] for Kottie 1.1.
  *
- * This class documents the integration surface. A full binding requires the
- * Paper API on the classpath and a concrete [ServerScheduler] that dispatches
- * to `Bukkit.getScheduler()` / the server primary thread.
+ * ## Wiring on a real Paper server
  *
- * Until that binding is supplied, [initialize] fails fast with a clear message
- * so unsupported deployments do not silently misbehave.
+ * ```kotlin
+ * val scheduler = PaperServerScheduler(
+ *     mainThreadExecutor = Executor { task ->
+ *         Bukkit.getScheduler().runTask(plugin, task)
+ *     },
+ *     isPrimaryThread = { Bukkit.isPrimaryThread() }
+ * )
+ * val adapter = PaperServerAdapter(
+ *     scheduler = scheduler,
+ *     supportedVersions = setOf("1.20.4", "1.21", "1.21.1")
+ * )
+ * val runtime = KottieRuntime.start(adapter)
+ * val bridge = adapter.attachEventBridge(runtime.eventBus, runtime.entityStore, runtime.scope)
+ * // From Bukkit listeners: bridge.onPlayerJoin(...) / bridge.onPlayerQuit(...)
+ * ```
+ *
+ * Without a scheduler (or when [requireLiveServer] is true and the host
+ * signals no Paper), [initialize] fails fast.
  */
 class PaperServerAdapter(
-    override val supportedVersions: Set<String> = setOf("1.20.4", "1.21"),
-    private val schedulerOverride: ServerScheduler? = null,
-    private val paperAvailable: Boolean = false
+    private val schedulerImpl: ServerScheduler? = null,
+    override val supportedVersions: Set<String> = DEFAULT_VERSIONS,
+    private val requireLiveServer: Boolean = false,
+    private val liveServerDetected: Boolean = false
 ) : ServerAdapter {
 
     private val log = LoggerFactory.getLogger(PaperServerAdapter::class.java)
@@ -25,25 +44,76 @@ class PaperServerAdapter(
     override val serverName: String = "paper"
 
     override val scheduler: ServerScheduler
-        get() = schedulerOverride
+        get() = schedulerImpl
             ?: error(
-                "PaperServerAdapter has no scheduler. " +
-                    "Supply a Paper-backed ServerScheduler or use the in-memory runtime for tests."
+                "PaperServerAdapter has no ServerScheduler. " +
+                    "Construct with PaperServerScheduler wired to Bukkit.getScheduler()."
             )
 
+    @Volatile
+    private var eventBridge: PaperEventBridge? = null
+
+    /**
+     * Attach join/quit bridging. Call after the Kottie runtime is started.
+     */
+    fun attachEventBridge(
+        eventBus: EventBus,
+        entityStore: EntityStore,
+        scope: CoroutineScope
+    ): PaperEventBridge {
+        val bridge = PaperEventBridge(eventBus, entityStore, scope)
+        eventBridge = bridge
+        return bridge
+    }
+
+    fun eventBridge(): PaperEventBridge? = eventBridge
+
     override fun initialize() {
-        if (!paperAvailable && schedulerOverride == null) {
+        if (requireLiveServer && !liveServerDetected) {
             throw UnsupportedServerEnvironmentException(
-                "Paper runtime not detected. Supported versions: $supportedVersions. " +
-                    "Use KottieRuntime with the in-memory adapter for unit tests, " +
-                    "or provide a Paper-backed ServerScheduler."
+                "Paper live server not detected. Supported versions: $supportedVersions"
             )
         }
-        log.info("PaperServerAdapter initialized (versions={})", supportedVersions)
+        if (schedulerImpl == null) {
+            throw UnsupportedServerEnvironmentException(
+                "No ServerScheduler provided to PaperServerAdapter. " +
+                    "Supported versions: $supportedVersions. " +
+                    "For unit tests, pass an in-memory scheduler or PaperServerScheduler with a test executor."
+            )
+        }
+        log.info(
+            "PaperServerAdapter initialized (versions={}, live={})",
+            supportedVersions,
+            liveServerDetected
+        )
     }
 
     override fun shutdown() {
+        eventBridge?.clear()
+        eventBridge = null
+        (schedulerImpl as? PaperServerScheduler)?.shutdown()
         log.info("PaperServerAdapter shutdown")
+    }
+
+    companion object {
+        val DEFAULT_VERSIONS: Set<String> = setOf("1.20.4", "1.21", "1.21.1")
+
+        /**
+         * Factory for production Paper hosts.
+         */
+        fun forPaperHost(
+            mainThreadExecutor: Executor,
+            isPrimaryThread: () -> Boolean,
+            supportedVersions: Set<String> = DEFAULT_VERSIONS
+        ): PaperServerAdapter {
+            val scheduler = PaperServerScheduler(mainThreadExecutor, isPrimaryThread)
+            return PaperServerAdapter(
+                schedulerImpl = scheduler,
+                supportedVersions = supportedVersions,
+                requireLiveServer = false,
+                liveServerDetected = true
+            )
+        }
     }
 }
 

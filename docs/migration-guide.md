@@ -1,16 +1,31 @@
-# Migration notes (toward 1.0)
+# Migration guide — toward 2.0
 
-## From 0.7 → 0.8
+## 1.x → 2.0.0
 
-- New optional module: `kottie-network`
-- New API package: `io.kottie.api.network`
-- No breaking changes to existing 0.7 facades (`EventBus`, `EntityStore`, `ConfigService`, `PacketBus`)
+- Bump dependency version to `2.0.0`.
+- Prefer `io.kottie.api.*` only in feature plugins.
+- Adapters stay optional:
+  - Paper hosts → `kottie-adapter-paper`
+  - Velocity hosts → `kottie-adapter-velocity`
+- Storage: `InMemoryRepository` still valid for tests; production should use `FileSystemRepository` or `SqlKeyValueRepository`.
+- No intentional hard breaks in public API contracts introduced for 2.0 freeze; review release notes if you shadowed internal packages.
 
-## Preparing for 1.0
+## 1.8 → 1.9
 
-1. Depend only on `io.kottie.api.*` from plugins.
-2. Treat network and packet modules as optional.
-3. Register component keys via `ComponentRegistry`.
-4. Use `ConfigService` validation — never mutate live config objects.
-5. Use `PayloadCodec.safeDecode` for any external bytes.
-6. Cancel plugin scopes / subscriptions on disable.
+- New optional `kottie-adapter-velocity`.
+
+## 1.6 → 1.7
+
+- New ECS query APIs and built-in components; additive.
+
+## Install
+
+```bash
+./gradlew publishToMavenLocal
+```
+
+```kotlin
+dependencies {
+    compileOnly("io.kottie:kottie-api:2.0.0")
+}
+```

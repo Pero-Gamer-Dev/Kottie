@@ -15,32 +15,29 @@ interface EntityListener {
  * Does not replace the underlying Minecraft server entity model.
  */
 interface EntityStore {
-    /**
-     * Create a new Kottie-managed entity and fire creation hooks.
-     */
     fun create(): Entity
-
-    /**
-     * Create with a specific UUID (e.g. matching a player id).
-     */
     fun create(uniqueId: java.util.UUID): Entity
-
-    /**
-     * Remove an entity, strip components, and fire removal hooks.
-     * Returns true if the entity was present.
-     */
     fun remove(entity: Entity): Boolean
-
-    /**
-     * Lookup by id.
-     */
     fun get(uniqueId: java.util.UUID): Entity?
-
-    /**
-     * Current entities (snapshot).
-     */
     fun all(): Collection<Entity>
-
     fun addListener(listener: EntityListener)
     fun removeListener(listener: EntityListener)
+
+    /**
+     * Return entities that have all [EntityQuery.required] components and none of
+     * [EntityQuery.excluded]. Default implementation scans [all]; indexed stores
+     * may override for better performance.
+     */
+    fun query(query: EntityQuery): Collection<Entity> {
+        return all().filter { entity ->
+            query.required.all { entity.has(it) } &&
+                query.excluded.none { entity.has(it) }
+        }
+    }
+
+    /**
+     * Convenience: entities that have every listed key.
+     */
+    fun withAll(vararg keys: ComponentKey<*>): Collection<Entity> =
+        query(EntityQuery.allOf(*keys))
 }

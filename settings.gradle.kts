@@ -12,7 +12,9 @@ include(
     "kottie-storage",
     "kottie-packets",
     "kottie-network",
+    "kottie-cluster",
     "kottie-adapter-paper",
+    "kottie-adapter-velocity",
     "kottie-testkit",
     "examples:kotlin-plugin",
     "examples:java-plugin"

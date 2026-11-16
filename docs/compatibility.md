@@ -1,35 +1,28 @@
-# Kottie Compatibility Matrix (1.0.0)
+# Compatibility matrix — Kottie 2.0.0
 
-| Component | Requirement | Notes |
-|-----------|-------------|-------|
-| JDK | 17+ | 17 and 21 supported targets |
-| Kotlin | 2.0.x | See `gradle/libs.versions.toml` |
-| Minecraft / Paper | Adapter skeleton only | `kottie-adapter-paper` fails fast without a real Paper binding |
-| Packet adapter | In-memory / test | Production Paper packets not shipped |
-| Network bridge | In-memory | Redis/NATS not shipped |
-| Serialization | Codec SPI + JSON helper | |
-| Storage | In-memory reference | |
+| Component | Supported | Notes |
+|-----------|-----------|--------|
+| **JDK** | 17, 21 | CI matrix |
+| **Kotlin** | 2.0.x | See `gradle/libs.versions.toml` |
+| **Gradle** | Wrapper 8.x | |
+| **Paper (host)** | Declared 1.20.4, 1.21, 1.21.1 | Adapter is host-wired; verify on your exact build |
+| **Velocity (host)** | Declared 3.3, 3.4 | Adapter is host-wired |
+| **Packets** | In-memory / SPI | No production Netty binding shipped |
+| **Network** | In-memory + RedisTransport SPI | Bring your own Lettuce/Jedis |
+| **Storage** | Memory, filesystem, SQL SPI | Bring your own JDBC for SQL |
+| **OS** | Linux/macOS/Windows for build | Server host OS = whatever runs Paper/Velocity |
 
-## Installation (1.0.0)
+## Maven coordinates (after publishToMavenLocal)
 
-Artifacts are **built from source** in this release:
-
-```bash
-git clone <your-fork> kottie && cd kottie
-./gradlew publishToMavenLocal
-```
-
-Then in a plugin:
-
-```kotlin
-repositories { mavenLocal(); mavenCentral() }
-dependencies {
-    compileOnly("io.kottie:kottie-api:1.0.0")
-}
-```
-
-The README coordinates `https://kottie.io` / `io.kottie:kottie-api:1.0.0` are **reserved** for a future published repository and are not verified live in 1.0.0.
+| Artifact | Coordinate |
+|----------|------------|
+| API | `io.kottie:kottie-api:2.0.0` |
+| Core | `io.kottie:kottie-core:2.0.0` |
+| Paper adapter | `io.kottie:kottie-adapter-paper:2.0.0` |
+| Velocity adapter | `io.kottie:kottie-adapter-velocity:2.0.0` |
+| Cluster | `io.kottie:kottie-cluster:2.0.0` |
+| … | See `docs/publishing.md` |
 
 ## Module independence
 
-Core (`api` + `core` + scheduler/events/lifecycle) boots without ECS, config, packets, network, or Paper.
+Core boots without: ECS usage, config files, packets, network, cluster, Paper, Velocity.

@@ -1,48 +1,46 @@
 package example;
 
 import io.kottie.api.Kottie;
-import io.kottie.api.event.Subscription;
+import io.kottie.api.ecs.components.HealthComponent;
+import io.kottie.api.ecs.components.ManaComponent;
 import io.kottie.api.lifecycle.LifecycleState;
-import io.kottie.api.lifecycle.PluginLifecycle;
-import kotlinx.coroutines.CoroutineScope;
-
-import java.time.Duration;
 
 /**
- * Minimal Java-facing example. Full non-suspend facade will be added later.
+ * Java sample (1.8) — shows component keys and runtime access.
+ * Prefer Kotlin for suspend [io.kottie.api.lifecycle.PluginLifecycle] implementations.
  */
-public class JavaExamplePlugin implements PluginLifecycle {
+public final class JavaExamplePlugin {
 
     private final Kottie kottie;
     private LifecycleState state = LifecycleState.DISCOVERED;
-    private Subscription joinSub;
 
     public JavaExamplePlugin(Kottie kottie) {
         this.kottie = kottie;
     }
 
-    @Override
     public LifecycleState getState() {
         return state;
     }
 
-    @Override
-    public CoroutineScope getScope() {
-        return kottie.getLifecycle().getScope();
-    }
-
-    @Override
-    public Object onEnable(kotlin.coroutines.Continuation<? super kotlin.Unit> cont) {
+    public void markRunning() {
         state = LifecycleState.RUNNING;
-        return kotlin.Unit.INSTANCE;
     }
 
-    @Override
-    public Object onDisable(Duration timeout, kotlin.coroutines.Continuation<? super kotlin.Unit> cont) {
-        if (joinSub != null) {
-            joinSub.close();
-        }
+    public void markStopped() {
         state = LifecycleState.STOPPED;
-        return kotlin.Unit.INSTANCE;
+    }
+
+    public String manaKeyId() {
+        return ManaComponent.KEY.getId();
+    }
+
+    public String healthKeyId() {
+        return HealthComponent.KEY.getId();
+    }
+
+    public String describeRuntime() {
+        return "eventBus=" + kottie.getEventBus().getClass().getSimpleName()
+            + ", entityStore=" + kottie.getEntityStore().getClass().getSimpleName()
+            + ", config=" + kottie.getConfig().getClass().getSimpleName();
     }
 }
