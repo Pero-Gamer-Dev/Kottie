@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master, "release/**"]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  layout:
+    name: Repository layout
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify layout matches settings
+        run: bash scripts/verify-layout.sh
+
+  build:
+    name: Build (JDK ${{ matrix.java }})
+    needs: layout
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        java: [17, 21]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK ${{ matrix.java }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build
+        run: ./gradlew build --no-daemon
+
+      - name: Test
+        run: ./gradlew :kottie-testkit:test --no-daemon
+
+      - name: Publish libraries to Maven Local
+        run: ./gradlew publishToMavenLocal --no-daemon
+
+  docs:
+    name: Docs & version consistency
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check required files
+        run: |
+          test -f README.md
+          test -f docs/compatibility.md
+          test -f docs/DEFINITION_OF_DONE.md
+          test -f docs/migration-guide.md
+          test -f docs/publishing.md
+          test -f scripts/release-check.sh
+          test -f scripts/verify-layout.sh
+          test -f gradlew
+          # Version in build file must be semver-like
+          grep -E 'version = "[0-9]+\.[0-9]+\.[0-9]+"' build.gradle.kts
