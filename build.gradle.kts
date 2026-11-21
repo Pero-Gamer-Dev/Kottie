@@ -4,7 +4,7 @@ plugins {
 
 allprojects {
     group = "io.kottie"
-    version = "2.0.1"
+    version = "2.6.0"
 
     repositories {
         mavenCentral()
@@ -23,21 +23,31 @@ subprojects {
     apply(plugin = "org.jetbrains.kotlin.jvm")
     apply(plugin = "java-library")
 
+    // Keep Java + Kotlin on the SAME bytecode target even when the CI JDK is 21.
+    // Without this, compileJava defaults to the running JDK (21) while Kotlin stays on 17.
     configure<JavaPluginExtension> {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
+        toolchain {
+            languageVersion.set(JavaLanguageVersion.of(17))
+        }
     }
 
     configure<org.jetbrains.kotlin.gradle.dsl.KotlinJvmProjectExtension> {
+        jvmToolchain(17)
         compilerOptions {
             freeCompilerArgs.add("-Xjvm-default=all")
             jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
         }
     }
 
-    // Prefer explicit compatibility over auto toolchain probes (broken partial JREs)
     tasks.withType<JavaCompile>().configureEach {
         options.release.set(17)
+        options.encoding = "UTF-8"
+    }
+
+    tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+        compilerOptions {
+            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+        }
     }
 
     dependencies {
@@ -48,6 +58,7 @@ subprojects {
 
     tasks.withType<Test> {
         useJUnitPlatform()
+        // Tests run on the toolchain JVM (17), not necessarily the outer JDK 21
     }
 
     if (!isExampleLeaf) {

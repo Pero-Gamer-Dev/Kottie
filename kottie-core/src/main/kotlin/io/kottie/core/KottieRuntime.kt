@@ -1,6 +1,7 @@
 package io.kottie.core
 
 import io.kottie.api.Kottie
+import io.kottie.api.command.CommandManager
 import io.kottie.api.diagnostics.DiagnosticEvent
 import io.kottie.api.diagnostics.DiagnosticSink
 import io.kottie.api.ecs.ComponentRegistry
@@ -9,9 +10,32 @@ import io.kottie.api.ecs.EntityStore
 import io.kottie.api.event.EventBus
 import io.kottie.api.lifecycle.LifecycleState
 import io.kottie.api.lifecycle.PluginLifecycle
+import io.kottie.api.messaging.Messenger
+import io.kottie.api.messaging.RecordingMessenger
+import io.kottie.api.permission.PermissionService
+import io.kottie.api.player.PlayerService
+import io.kottie.api.world.WorldService
+import io.kottie.api.inventory.InventoryService
+import io.kottie.api.scoreboard.ScoreboardService
+import io.kottie.api.bossbar.BossBarService
+import io.kottie.api.title.TitleService
+import io.kottie.api.plugin.PluginLoader
+import io.kottie.api.scheduler.RegionScheduler
 import io.kottie.api.scheduler.ServerScheduler
+import io.kottie.api.service.ServiceRegistry
+import io.kottie.core.command.DefaultCommandManager
 import io.kottie.core.event.DefaultEventBus
+import io.kottie.core.permission.DefaultPermissionService
+import io.kottie.core.player.InMemoryPlayerService
+import io.kottie.core.world.InMemoryWorldService
+import io.kottie.core.inventory.InMemoryInventoryService
+import io.kottie.core.scoreboard.InMemoryScoreboardService
+import io.kottie.core.bossbar.InMemoryBossBarService
+import io.kottie.core.title.RecordingTitleService
+import io.kottie.core.plugin.DefaultPluginLoader
+import io.kottie.core.scheduler.FallbackRegionScheduler
 import io.kottie.core.scheduler.InMemoryServerScheduler
+import io.kottie.core.service.DefaultServiceRegistry
 import io.kottie.coroutines.CancellableScope
 import io.kottie.coroutines.createPluginScope
 import io.kottie.ecs.DefaultComponentRegistry
@@ -66,6 +90,21 @@ class KottieRuntime(
     override val entityStore: EntityStore = DefaultEntityStore()
     override val componentRegistry: ComponentRegistry = DefaultComponentRegistry()
     override val config: ConfigService = DefaultConfigService()
+
+    override val permissions: PermissionService = DefaultPermissionService()
+    override val commands: CommandManager = DefaultCommandManager(permissions)
+    override val messenger: Messenger = RecordingMessenger()
+    override val services: ServiceRegistry = DefaultServiceRegistry()
+    private val regionScheduler = FallbackRegionScheduler(scheduler)
+    override val regions: RegionScheduler get() = regionScheduler
+
+    override val players: PlayerService = InMemoryPlayerService()
+    override val worlds: WorldService = InMemoryWorldService()
+    override val inventories: InventoryService = InMemoryInventoryService()
+    override val scoreboards: ScoreboardService = InMemoryScoreboardService()
+    override val bossBars: BossBarService = InMemoryBossBarService()
+    override val titles: TitleService = RecordingTitleService()
+    override val plugins: PluginLoader = DefaultPluginLoader()
 
     override val lifecycle: PluginLifecycle get() = this
 
@@ -153,6 +192,7 @@ class KottieRuntime(
 
             adapter?.shutdown()
             (scheduler as? InMemoryServerScheduler)?.shutdown()
+            regionScheduler.shutdown()
             Kottie.clearInstance()
             stateRef.set(LifecycleState.STOPPED)
             report(DiagnosticEvent.Category.LIFECYCLE, "Runtime stopped")

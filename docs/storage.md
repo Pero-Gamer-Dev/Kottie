@@ -44,3 +44,13 @@ repo.ensureSchema()
 - Do not store Bukkit/Paper entity references  
 - Enforce `maxPayloadBytes` on encode and decode  
 - Prefer versioned repositories for multi-writer conflict detection  
+
+## FileSystemVersionedRepository (2.2)
+
+Optimistic concurrency on disk: 8-byte version prefix + codec payload.
+
+```kotlin
+val repo = FileSystemVersionedRepository(Path.of("data/v"), codec)
+repo.saveIfVersion("player-1", profile, expectedVersion = 0L)
+val v = repo.findVersioned("player-1")
+```
