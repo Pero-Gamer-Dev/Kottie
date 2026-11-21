@@ -31,3 +31,11 @@
 | Maven Central publication | Operator must publish |
 | TPS / latency marketing numbers | Methodology only |
 | Replacement for Bukkit entity API | ECS is metadata-only |
+
+## 2.0.1
+
+| Item | Status |
+|------|--------|
+| CI build green path (wrapper + JDK setup) | Fixed |
+| ComponentKey compile on Kotlin 2.0 | Fixed |
+| examples aggregate project | Fixed |

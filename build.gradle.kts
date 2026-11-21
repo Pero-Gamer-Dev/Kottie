@@ -4,7 +4,7 @@ plugins {
 
 allprojects {
     group = "io.kottie"
-    version = "2.0.0"
+    version = "2.0.1"
 
     repositories {
         mavenCentral()
@@ -12,14 +12,32 @@ allprojects {
 }
 
 subprojects {
+    val isExamplesAggregate = path == ":examples"
+    val isExampleLeaf = path.startsWith(":examples:")
+
+    if (isExamplesAggregate) {
+        // Parent container only — no compile/publish
+        return@subprojects
+    }
+
     apply(plugin = "org.jetbrains.kotlin.jvm")
     apply(plugin = "java-library")
+
+    configure<JavaPluginExtension> {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
 
     configure<org.jetbrains.kotlin.gradle.dsl.KotlinJvmProjectExtension> {
         compilerOptions {
             freeCompilerArgs.add("-Xjvm-default=all")
             jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
         }
+    }
+
+    // Prefer explicit compatibility over auto toolchain probes (broken partial JREs)
+    tasks.withType<JavaCompile>().configureEach {
+        options.release.set(17)
     }
 
     dependencies {
@@ -32,12 +50,7 @@ subprojects {
         useJUnitPlatform()
     }
 
-    val isExample = name.startsWith("java-plugin") || name.startsWith("kotlin-plugin") ||
-        path.contains("examples")
-    val isTestkit = name == "kottie-testkit"
-
-    // Library modules get maven-publish; examples/testkit stay local-only by default
-    if (!isExample) {
+    if (!isExampleLeaf) {
         apply(plugin = "maven-publish")
 
         val sourcesJar by tasks.registering(Jar::class) {
@@ -84,8 +97,7 @@ subprojects {
         }
     }
 
-    // Examples should not fail the root build if they are samples only
-    if (isExample) {
+    if (isExampleLeaf) {
         tasks.matching { it.name == "test" }.configureEach {
             enabled = false
         }
