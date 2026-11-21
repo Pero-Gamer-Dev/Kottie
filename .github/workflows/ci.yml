@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [main, master]
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   layout:
     name: Repository layout
@@ -15,9 +19,30 @@ jobs:
       - name: Verify layout matches settings
         run: bash scripts/verify-layout.sh
 
+  docs:
+    name: Docs & version consistency
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check required files
+        run: |
+          set -euo pipefail
+          test -f README.md
+          test -f docs/compatibility.md
+          test -f docs/DEFINITION_OF_DONE.md
+          test -f docs/migration-guide.md
+          test -f docs/publishing.md
+          test -f scripts/release-check.sh
+          test -f scripts/verify-layout.sh
+          test -f gradlew
+          test -f settings.gradle.kts
+          test -f build.gradle.kts
+          test -f gradle/libs.versions.toml
+          grep -E 'version = "[0-9]+\.[0-9]+\.[0-9]+"' build.gradle.kts
+
   build:
     name: Build (JDK ${{ matrix.java }})
-    needs: layout
+    needs: [layout, docs]
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -31,33 +56,25 @@ jobs:
         with:
           distribution: temurin
           java-version: ${{ matrix.java }}
+          cache: gradle
+
+      - name: Ensure Gradle wrapper is executable
+        run: |
+          chmod +x gradlew
+          # Avoid CR-only breakage if checked out on Windows tools
+          sed -i 's/\r$//' gradlew || true
+          head -1 gradlew
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: false
 
-      - name: Build
-        run: bash ./gradlew build --no-daemon
+      - name: Build (compile + assemble)
+        run: ./gradlew assemble --no-daemon --stacktrace
 
       - name: Test
-        run: bash ./gradlew :kottie-testkit:test --no-daemon
+        run: ./gradlew :kottie-testkit:test --no-daemon --stacktrace
 
       - name: Publish libraries to Maven Local
-        run: bash ./gradlew publishToMavenLocal --no-daemon
-
-  docs:
-    name: Docs & version consistency
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Check required files
-        run: |
-          test -f README.md
-          test -f docs/compatibility.md
-          test -f docs/DEFINITION_OF_DONE.md
-          test -f docs/migration-guide.md
-          test -f docs/publishing.md
-          test -f scripts/release-check.sh
-          test -f scripts/verify-layout.sh
-          test -f gradlew
-          # Version in build file must be semver-like
-          grep -E 'version = "[0-9]+\.[0-9]+\.[0-9]+"' build.gradle.kts
+        run: ./gradlew publishToMavenLocal --no-daemon --stacktrace
