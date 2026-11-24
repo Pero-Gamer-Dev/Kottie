@@ -1,7 +1,16 @@
-name: Flatten kottie directory
+name: Flatten Kottie repository
 
 on:
   workflow_dispatch:
+    inputs:
+      source_directory:
+        description: Source directory relative to the repository root
+        required: true
+        default: .
+      output_directory:
+        description: Output directory relative to the repository root
+        required: true
+        default: flattened
 
 permissions:
   contents: write
@@ -9,43 +18,117 @@ permissions:
 jobs:
   flatten:
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
 
-      - name: Move kottie contents to repository root
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+
+      - name: Safely flatten repository
         shell: bash
+        env:
+          SOURCE_DIRECTORY: ${{ inputs.source_directory }}
+          OUTPUT_DIRECTORY: ${{ inputs.output_directory }}
         run: |
           set -euo pipefail
 
-          if [[ ! -d kottie ]]; then
-            echo "kottie/ directory not found."
-            exit 1
-          fi
+          python3 - <<'PY'
+          import os
+          import shutil
+          from pathlib import Path, PurePosixPath
 
-          shopt -s dotglob nullglob
-          items=(kottie/*)
+          root = Path(os.environ["GITHUB_WORKSPACE"]).resolve()
 
-          if ((${#items[@]} == 0)); then
-            echo "kottie/ is already empty."
-            exit 0
-          fi
+          def safe_relative_path(value, label, allow_dot=False):
+              if not value:
+                  raise SystemExit(f"{label} cannot be empty.")
+              if "\\" in value:
+                  raise SystemExit(f"{label} must use forward slashes: {value}")
 
-          # Check for name conflicts before moving anything.
-          for src in "${items[@]}"; do
-            dest="./$(basename "$src")"
-            if [[ -e "$dest" || -L "$dest" ]]; then
-              echo "Conflict: $dest already exists. No files were moved."
-              exit 1
-            fi
-          done
+              path = PurePosixPath(value)
+              if path.is_absolute() or any(
+                  part in ("..", "") for part in path.parts
+              ):
+                  raise SystemExit(
+                      f"{label} must be a relative path without '..': {value}"
+                  )
+              if not allow_dot and value in (".", "./"):
+                  raise SystemExit(f"{label} cannot be the repository root.")
+
+              return path
+
+          source_input = os.environ["SOURCE_DIRECTORY"].strip()
+          output_input = os.environ["OUTPUT_DIRECTORY"].strip()
+
+          source_rel = safe_relative_path(
+              source_input, "source_directory", allow_dot=True
+          )
+          output_rel = safe_relative_path(
+              output_input, "output_directory"
+          )
+
+          source_path = (
+              root
+              if str(source_rel) == "."
+              else root.joinpath(*source_rel.parts).resolve()
+          )
+          output_path = root.joinpath(*output_rel.parts).resolve()
+
+          if not source_path.is_relative_to(root):
+              raise SystemExit("Source directory must be inside the repository.")
+          if not source_path.is_dir():
+              raise SystemExit(f"Source directory not found: {source_input}")
+          if not output_path.is_relative_to(root):
+              raise SystemExit("Output directory must be inside the repository.")
+          if output_path == root:
+              raise SystemExit("Output directory cannot be the repository root.")
+
+          output_path.mkdir(parents=True, exist_ok=True)
+
+          excluded = {
+              ".git",
+              ".github",
+          }
+
+          for item in source_path.iteriterdir():
+              if item.name in excluded:
+                  continue
+
+              destination = output_path / item.name
+              if item.is_symlink():
+                  raise SystemExit(
+                      f"Symlinks are not allowed in source directories: {item}"
+                  )
+
+              if item.is_dir():
+                  shutil.copytree(
+                      item,
+                      destination,
+                      dirs_exist_ok=True,
+                      symlinks=False,
+                  )
+              else:
+                  shutil.copy2(item, destination)
+          PY
+
+      - name: Commit and push flattened files
+        shell: bash
+        env:
+          OUTPUT_DIRECTORY: ${{ inputs.output_directory }}
+        run: |
+          set -euo pipefail
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          for src in "${items[@]}"; do
-            git mv -- "$src" .
-          done
+          git add -A -- "$OUTPUT_DIRECTORY"
+          git restore --staged -- "$OUTPUT_DIRECTORY" 2>/dev/null || true
 
-          rmdir kottie
-          git commit -m "Move kottie contents to repository root"
+          if git diff --cached --quiet; then
+            echo "No flattened-file changes to commit."
+            exit 0
+          fi
+
+          git commit -m "Flatten Kottie repository"
           git push origin "HEAD:${GITHUB_REF_NAME}"
