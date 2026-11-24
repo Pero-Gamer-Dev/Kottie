@@ -1,0 +1,231 @@
+name: Extract ZIP into repository
+
+on:
+  workflow_dispatch:
+    inputs:
+      zip_file:
+        description: ZIP file path relative to the repository root
+        required: true
+        default: archive.zip
+      extract_to:
+        description: Destination path relative to the repository root (use . for the root)
+        required: true
+        default: .
+
+permissions:
+  contents: write
+
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+
+      - name: Safely extract ZIP
+        shell: bash
+        env:
+          ZIP_FILE: ${{ inputs.zip_file }}
+          EXTRACT_TO: ${{ inputs.extract_to }}
+        run: |
+          set -euo pipefail
+
+          python3 - <<'PY'
+          import os
+          import shutil
+          import stat
+          import zipfile
+          from pathlib import Path, PurePosixPath
+
+          root = Path(os.environ["GITHUB_WORKSPACE"]).resolve()
+          zip_input = os.environ["ZIP_FILE"].strip()
+          dest_input = os.environ["EXTRACT_TO"].strip()
+
+          def safe_relative_path(value, label, allow_dot=False):
+              if not value:
+                  raise SystemExit(f"{label} cannot be empty.")
+              if "\\" in value:
+                  raise SystemExit(f"{label} must use forward slashes: {value}")
+
+              path = PurePosixPath(value)
+              if path.is_absolute() or any(part in ("..", "") for part in path.parts):
+                  raise SystemExit(f"{label} must be a relative path without '..': {value}")
+              if not allow_dot and value in (".", "./"):
+                  raise SystemExit(f"{label} cannot be the repository root.")
+
+              return path
+
+    zip_rel = safe_relative_path(zip_input, "zip_file")
+          dest_rel = safe_relative_path(dest_input, "extract_to", allow_dot=True)
+
+          zip_path = root.joinpath(*zip_rel.parts).resolve()
+          dest_path = root if str(dest_rel) == "." else root.joinpath(*dest_rel.parts).resolve()
+
+          if not zip_path.is_relative_to(root):
+              raise SystemExit("ZIP file must be inside the repository.")
+          if not zip_path.is_file():
+              raisename: Extract ZIP into repository
+
+on:
+  workflow_dispatch:
+    inputs:
+      zip_file:
+        description: ZIP file path relative to the repository root
+        required: true
+        default: archive.zip
+      extract_to:
+        description: Destination path relative to the repository root (use . for the root)
+        required: true
+        default: .
+
+permissions:
+  contents: write
+
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+
+      - name: Safely extract ZIP
+        shell: bash
+        env:
+          ZIP_FILE: ${{ inputs.zip_file }}
+          EXTRACT_TO: ${{ inputs.extract_to }}
+        run: |
+          set -euo pipefail
+
+          python3 - <<'PY'
+          import os
+          import shutil
+          import stat
+          import zipfile
+          from pathlib import Path, PurePosixPath
+
+          root = Path(os.environ["GITHUB_WORKSPACE"]).resolve()
+          zip_input = os.environ["ZIP_FILE"].strip()
+          dest_input = os.environ["EXTRACT_TO"].strip()
+
+          def safe_relative_path(value, label, allow_dot=False):
+              if not value:
+                  raise SystemExit(f"{label} cannot be empty.")
+              if "\\" in value:
+                  raise SystemExit(f"{label} must use forward slashes: {value}")
+
+              path = PurePosixPath(value)
+              if path.is_absolute() or any(part in ("..", "") for part in path.parts):
+                  raise SystemExit(f"{label} must be a relative path without '..': {value}")
+              if not allow_dot and value in (".", "./"):
+                  raise SystemExit(f"{label} cannot be the repository root.")
+
+              return path
+
+          zip_rel = safe_relative_path(zip_input, "zip_file")
+          dest_rel = safe_relative_path(dest_input, "extract_to", allow_dot=True)
+
+          zip_path = root.joinpath(*zip_rel.parts).resolve()
+          dest_path = root if str(dest_rel) == "." else root.joinpath(*dest_rel.parts).resolve()
+
+          if not zip_path.is_relative_to(root):
+              raise SystemExit("ZIP file must be inside the repository.")
+          if not zip_path.is_file():
+              raise SystemExit(f"ZIP file not found: {zip_input}")
+          if not dest_path.is_relative_to(root):
+              raise SystemExit("Extraction destination must be inside the repository.")
+
+          dest_path.mkdir(parents=True, exist_ok=True)
+
+          try:
+              with zipfile.ZipFile(zip_path) as archive:
+                  members = archive.infolist()
+
+                  if not members:
+                      raise SystemExit("The ZIP archive is empty.")
+
+                  for member in members:
+                      name = member.filename
+                      member_path = PurePosixPath(name)
+
+                      if not name or "\\" in name or member_path.is_absolute():
+                          raise SystemExit(f"Unsafe path in ZIP archive: {name!r}")
+                      if any(part in ("..", "") for part in member_path.parts):
+                          raise SystemExit(f"Unsafe path in ZIP archive: {name!r}")
+
+                      target = dest_path.joinpath(*member_path.parts).resolve()
+                      if not target.is_relative_to(dest_path):
+                          raise SystemExit(f"ZIP entry escapes extraction directory: {name!r}")
+
+                      mode = member.external_attr >> 16
+                      if stat.S_ISLNK(mode):
+                          raise SystemExit(f"Symlinks are not allowed in ZIP archives: {name!r}")
+
+                  for member in members:
+                      target = dest_path.joinpath(*PurePosixPath(member.filename).parts).resolve()
+
+                      if member.is_dir():
+                          target.mkdir(parents=True, exist_ok=True)
+                          continue
+
+                      target.parent.mkdir(parents=True, exist_ok=True)
+                      with archive.open(member) as source, target.open("wb") as output:
+                          shutil.copyfileobj(source, output)
+
+          except zipfile.BadZipFile as error:
+              raise SystemExit(f"Invalid or damaged ZIP file: {error}")
+
+          print(f"Extracted {zip_input} into {dest_input}")
+          PY
+
+      - name: Commit and push extracted files
+        shell: bash
+        env:
+          EXTRACT_TO: ${{ inputs.extract_to }}
+        run: |
+          set -euo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add -A -- "$EXTRACT_TO"
+
+          if git diff --cached --quiet; then
+            echo "No extracted-file changes to commit."
+            exit 0
+          fi
+
+          git commit -m "Extract ZIP into repository"
+          git push origin "HEAD:${GITHUB_REF_NAME}"￼Enter SystemExit(f"ZIP file not found: {zip_input}")
+          if not dest_path.is_relative_to(root):
+              raise SystemExit("Extraction destination must be inside the repository.")
+
+          dest_path.mkdir(parents=True, exist_ok=True)
+
+          try:
+              with zipfile.ZipFile(zip_path) as archive:
+                  members = archive.infolist()
+
+                  if not members:
+                      raise SystemExit("The ZIP archive is empty.")
+
+                  for member in members:
+                      name = member.filename
+                      member_path = PurePosixPath(name)
+
+                      if not name or "\\" in name or member_path.is_absolute():
+                          raise SystemExit(f"Unsafe path in ZIP archive: {name!r}")
+                      if any(part in ("..", "") for part in member_path.parts):
+                          raise SystemExit(f"Unsafe path in ZIP archive: {name!r}")
+
+                      target = dest_path.joinpath(*member_path.parts).resolve()
+                      if not target.is_relative_to(dest_path):
+                          raise SystemExit(f"ZIP entry escapes extraction directory: {name!r}")
+
+                      mode = member.external_attr >> 16
+                      if stat.S_ISLNK(mode):
